@@ -32,14 +32,14 @@ def parse_card_list(directory="Cards_to_add"):
 
             parts = [p.strip() for p in line.split(",")]
             if len(parts) != 3:
-                print(f"    ⚠ Skipping line {line_num} (expected 3 fields): {line}")
+                print(f" Skipping line {line_num} (expected 3 fields): {line}")
                 continue
 
             url, quality, quantity = parts
             try:
                 quantity = int(quantity)
             except ValueError:
-                print(f"    ⚠ Skipping line {line_num} (invalid quantity): {line}")
+                print(f" Skipping line {line_num} (invalid quantity): {line}")
                 continue
 
             cards.append(
@@ -176,10 +176,10 @@ class CartManager:
             product_id = self.driver.run_js(
                 f"return document.querySelector('{self.PRODUCT_ID_SELECTOR}').value"
             )
-            print(f"    ✔ Product ID: {product_id}")
+            print(f"   Product ID: {product_id}")
             return product_id
         else:
-            print(f"    ✘ Product ID not found")
+            print("    Product ID not found!!")
             return None
 
     def _add_single(self, card):
@@ -207,11 +207,11 @@ class CartManager:
             body = result.get("body", "")
 
             if status == 200:
-                print(f"    ✔ Added successfully! (HTTP {status})")
+                print(f"   Added successfully! (HTTP {status})")
                 return True
             else:
-                print(f"    ✘ Failed (HTTP {status}): {body[:200]}")
+                print(f"   Failed (HTTP {status}): {body[:200]}")
                 return False
         except Exception as e:
-            print(f"    ✘ JS Error: {e}")
+            print(f"      JS Error: {e}")
             return False
