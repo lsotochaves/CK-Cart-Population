@@ -1,10 +1,11 @@
 import os
 import glob
+import json
 import time
 
 
 # ──────────────────────────────────────────────
-# 1. PARSE THE TXT FILE
+# UTILITY: Pure function — no state needed
 # ──────────────────────────────────────────────
 def parse_card_list(directory="Cards_to_add"):
     """
@@ -12,11 +13,8 @@ def parse_card_list(directory="Cards_to_add"):
     Expected format per line (comma-separated):
         url, quality, quantity
 
-    Example:
-        https://www.cardkingdom.com/mtg/foundations/llanowar-elves, NM, 4
-
-    Returns a list of dicts:
-        [{"url": "...", "quality": "NM", "quantity": 4}, ...]
+    This is a pure function (data in → data out), so it stays
+    outside the class on purpose.
     """
     txt_files = glob.glob(os.path.join(directory, "*.txt"))
     if not txt_files:
@@ -57,129 +55,163 @@ def parse_card_list(directory="Cards_to_add"):
 
 
 # ──────────────────────────────────────────────
-# 2. EXTRACT PRODUCT ID (Single Card)
+# CART MANAGER
 # ──────────────────────────────────────────────
-def extract_product_id(driver, url):
+class CartManager:
     """
-    Navigates to a card page and extracts the product_id.
-    Uses the same browser session passed from main.py.
+    Manages the full cart pipeline: load → extract IDs → add to cart.
+
+    All operations use the same browser session (self.driver),
+    so Cloudflare tokens and cookies are always valid.
+
+    Usage:
+        cart = CartManager(driver)
+        cart.load_from_file("Cards_to_add")
+        cart.extract_product_ids()
+        cart.add_all()
+        cart.summary()
     """
-    print(f">>> Loading: {url}")
-    driver.get(url)
 
-    selector = 'form.addToCartForm input[name="product_id[0]"]'
+    API_URL = "https://www.cardkingdom.com/api/cart/add"
+    PRODUCT_ID_SELECTOR = 'form.addToCartForm input[name="product_id[0]"]'
 
-    if driver.is_element_present(selector, wait=10):
-        product_id = driver.run_js(f"return document.querySelector('{selector}').value")
-        print(f"    ✔ Product ID: {product_id}")
-        return product_id
-    else:
-        print(f"    ✘ Product ID not found")
-        return None
+    def __init__(self, driver, delay=1):
+        self.driver = driver
+        self.delay = delay
+        self.cards = []
+        self.success_count = 0
+        self.fail_count = 0
 
+    # ──────────────────────────────────────────
+    # Public API
+    # ──────────────────────────────────────────
+    def load_from_file(self, directory="Cards_to_add"):
+        """Parse card list from a .txt file and store in self.cards."""
+        self.cards = parse_card_list(directory)
+        return self
 
-# ──────────────────────────────────────────────
-# 3. ADD CARDS TO CART VIA API (through browser)
-# ──────────────────────────────────────────────
-def add_card_to_cart(driver, card):
-    """
-    Adds a single card to cart by executing fetch() inside the browser.
-    This inherits all cookies, Cloudflare tokens, and session state
-    automatically — no separate requests.Session needed.
-    """
-    import json
+    def load_from_list(self, card_list):
+        """Load cards directly from a list of dicts (for programmatic use)."""
+        self.cards = card_list
+        return self
 
-    payload = {
-        "product_id": card["product_id"],
-        "style": card["quality"],
-        "quantity": card["quantity"],
-    }
+    def preview(self):
+        """Print a preview of the loaded cards."""
+        if not self.cards:
+            print(">>> No cards loaded.")
+            return self
 
-    # Synchronous XMLHttpRequest executed inside the authenticated browser
-    js_code = """
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://www.cardkingdom.com/api/cart/add", false);
-    xhr.setRequestHeader("accept", "application/json;charset=UTF-8");
-    xhr.setRequestHeader("content-type", "application/json;charset=UTF-8");
-    xhr.setRequestHeader("x-requested-with", "XMLHttpRequest");
-    xhr.send(JSON.stringify(%s));
-    return JSON.stringify({status: xhr.status, body: xhr.responseText});
-    """ % json.dumps(payload)
+        print(">>> Card list preview:")
+        for c in self.cards:
+            print(f"    {c['url']}  |  {c['quality']}  |  x{c['quantity']}")
+        return self
 
-    try:
-        result_raw = driver.run_js(js_code)
-        result = json.loads(result_raw)
-        status = result.get("status")
-        body = result.get("body", "")
+    def extract_product_ids(self):
+        """
+        Visit each card's URL in the browser and extract its product_id.
+        Enriches self.cards in place.
+        """
+        print("\n" + "=" * 50)
+        print(">>> EXTRACTING PRODUCT IDs")
+        print("=" * 50)
 
-        if status == 200:
-            print(f"    ✔ Added successfully! (HTTP {status})")
-            return True
-        else:
-            print(f"    ✘ Failed (HTTP {status}): {body[:200]}")
-            return False
-    except Exception as e:
-        print(f"    ✘ JS Error: {e}")
-        return False
+        for i, card in enumerate(self.cards):
+            print(f"\n[{i + 1}/{len(self.cards)}]")
+            card["product_id"] = self._extract_single_id(card["url"])
+            time.sleep(self.delay)
 
+        return self
 
-def add_cards_to_cart(driver, cards):
-    """
-    Iterates through cards and adds each to cart via browser fetch().
-    """
-    print("\n" + "=" * 50)
-    print(">>> ADDING CARDS TO CART")
-    print("=" * 50)
+    def add_all(self):
+        """
+        Add all cards (that have a product_id) to the cart via
+        XMLHttpRequest inside the browser.
+        """
+        print("\n" + "=" * 50)
+        print(">>> ADDING CARDS TO CART")
+        print("=" * 50)
 
-    success_count = 0
-    for i, card in enumerate(cards):
-        if not card.get("product_id"):
-            print(f"\n[{i + 1}/{len(cards)}] SKIP (no product_id): {card['url']}")
-            continue
+        self.success_count = 0
+        self.fail_count = 0
 
-        print(f"\n[{i + 1}/{len(cards)}] Adding: {card['url']}")
+        for i, card in enumerate(self.cards):
+            if not card.get("product_id"):
+                print(
+                    f"\n[{i + 1}/{len(self.cards)}] SKIP (no product_id): {card['url']}"
+                )
+                self.fail_count += 1
+                continue
+
+            print(f"\n[{i + 1}/{len(self.cards)}] Adding: {card['url']}")
+            print(
+                f"    product_id={card['product_id']}, style={card['quality']}, qty={card['quantity']}"
+            )
+
+            if self._add_single(card):
+                self.success_count += 1
+            else:
+                self.fail_count += 1
+
+            time.sleep(self.delay)
+
+        return self
+
+    def summary(self):
+        """Print a final summary of the cart operation."""
+        total = len(self.cards)
         print(
-            f"    Payload: product_id={card['product_id']}, style={card['quality']}, qty={card['quantity']}"
+            f"\n>>> Cart Summary: {self.success_count}/{total} added, {self.fail_count} failed."
         )
+        return self
 
-        if add_card_to_cart(driver, card):
-            success_count += 1
+    # ──────────────────────────────────────────
+    # Private helpers
+    # ──────────────────────────────────────────
+    def _extract_single_id(self, url):
+        """Navigate to a card page and pull the product_id from the form."""
+        print(f">>> Loading: {url}")
+        self.driver.get(url)
 
-        time.sleep(1)
+        if self.driver.is_element_present(self.PRODUCT_ID_SELECTOR, wait=10):
+            product_id = self.driver.run_js(
+                f"return document.querySelector('{self.PRODUCT_ID_SELECTOR}').value"
+            )
+            print(f"    ✔ Product ID: {product_id}")
+            return product_id
+        else:
+            print(f"    ✘ Product ID not found")
+            return None
 
-    print(f"\n>>> Done: {success_count}/{len(cards)} cards added to cart.")
-    return success_count
+    def _add_single(self, card):
+        """Add one card to cart via synchronous XHR in the browser."""
+        payload = {
+            "product_id": card["product_id"],
+            "style": card["quality"],
+            "quantity": card["quantity"],
+        }
 
+        js_code = """
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "%s", false);
+        xhr.setRequestHeader("accept", "application/json;charset=UTF-8");
+        xhr.setRequestHeader("content-type", "application/json;charset=UTF-8");
+        xhr.setRequestHeader("x-requested-with", "XMLHttpRequest");
+        xhr.send(JSON.stringify(%s));
+        return JSON.stringify({status: xhr.status, body: xhr.responseText});
+        """ % (self.API_URL, json.dumps(payload))
 
-# ──────────────────────────────────────────────
-# 4. PROCESS CART (orchestrates steps 1-3)
-# ──────────────────────────────────────────────
-def process_cart(driver, cookies):
-    """
-    Full cart pipeline — called from main.py with the same driver.
-    1. Parse card list from Cards_to_add/
-    2. Extract product IDs (same browser)
-    3. POST to API
-    """
-    # Step 1: Parse
-    cards = parse_card_list("Cards_to_add")
-    if not cards:
-        print("!!! No cards to process.")
-        return
+        try:
+            result_raw = self.driver.run_js(js_code)
+            result = json.loads(result_raw)
+            status = result.get("status")
+            body = result.get("body", "")
 
-    print(">>> Card list preview:")
-    for c in cards:
-        print(f"    {c['url']}  |  {c['quality']}  |  x{c['quantity']}")
-
-    # Step 2: Extract product IDs (same browser session)
-    print("\n" + "=" * 50)
-    print(">>> EXTRACTING PRODUCT IDs")
-    print("=" * 50)
-
-    for i, card in enumerate(cards):
-        print(f"\n[{i + 1}/{len(cards)}]")
-        card["product_id"] = extract_product_id(driver, card["url"])
-        time.sleep(1)
-
-    # Step 3: Add to cart via browser fetch
-    add_cards_to_cart(driver, cards)
+            if status == 200:
+                print(f"    ✔ Added successfully! (HTTP {status})")
+                return True
+            else:
+                print(f"    ✘ Failed (HTTP {status}): {body[:200]}")
+                return False
+        except Exception as e:
+            print(f"    ✘ JS Error: {e}")
+            return False

@@ -2,92 +2,121 @@ import getpass
 import time
 
 
-# ──────────────────────────────────────────────
-# 1. SECURE CREDENTIALS INPUT
-# ──────────────────────────────────────────────
-def get_credentials(retry=False):
-    if retry:
-        print("\n" + "!" * 40)
-        print("!!! PREVIOUS LOGIN FAILED. Please try again.")
-        print("!" * 40)
+class LoginManager:
+    """
+    Handles authentication with Card Kingdom.
 
-    print("\n--- Secure Credentials Input ---")
-    email = input("Enter Email: ")
-    password = getpass.getpass("Enter Password: ")
-    return email, password
+    Usage:
+        login_mgr = LoginManager(driver)
+        if login_mgr.login():
+            cookies = login_mgr.cookies
+    """
 
+    LOGIN_URL = "https://www.cardkingdom.com/customer_login"
+    HOME_URL = "https://www.cardkingdom.com"
 
-# ──────────────────────────────────────────────
-# 2. BROWSER LOGIN INTERACTION
-# ──────────────────────────────────────────────
-def perform_login_attempt(driver, email, password):
-    """Types credentials into the form and submits."""
-    print(">>> Filling login form...")
-    try:
-        if "customer_login" not in driver.current_url:
-            driver.get("https://www.cardkingdom.com/customer_login")
+    def __init__(self, driver, max_retries=3):
+        self.driver = driver
+        self.max_retries = max_retries
+        self.cookies = None
+        self.is_logged_in = False
 
-        driver.type("input[name='email'], #email", email)
-        driver.type("input[name='password'], #password", password)
+    # ──────────────────────────────────────────
+    # Public API
+    # ──────────────────────────────────────────
+    def login(self):
+        """
+        Main login flow. Prompts for credentials, retries on failure.
+        Returns True on success, False on failure.
+        Cookies are stored in self.cookies.
+        """
+        email, password = self._get_credentials()
 
-        print(">>> Clicking Submit...")
-        driver.click("input[type='submit'], button[type='submit']", wait=2)
-        return True
-    except Exception as e:
-        print(f">>> Interaction Error: {e}")
+        for attempt in range(self.max_retries):
+            print(f"\n" + "=" * 30)
+            print(f">>> LOGIN ATTEMPT {attempt + 1} / {self.max_retries}")
+            print("=" * 30)
+
+            self._submit_form(email, password)
+
+            print(">>> Waiting for server response...")
+            time.sleep(4)
+
+            result = self._check_result()
+
+            if result == "success":
+                self.cookies = self.driver.get_cookies()
+                self.is_logged_in = True
+                print("\n>>> SUCCESS: Login valid.")
+                return True
+
+            elif result == "failed":
+                print("\n>>> FAILURE: Credentials rejected.")
+                if attempt < self.max_retries - 1:
+                    email, password = self._get_credentials(retry=True)
+                else:
+                    print("!!! Max retries reached.")
+
+            elif result == "captcha":
+                print("\n>>> CAPTCHA: Cloudflare detected.")
+                input(">>> Solve the CAPTCHA in the browser and press ENTER here...")
+                if self._is_home():
+                    self.cookies = self.driver.get_cookies()
+                    self.is_logged_in = True
+                    return True
+
+            elif result == "unknown":
+                current_url = self.driver.current_url.rstrip("/")
+                print(f"\n>>> UNKNOWN: Landed on {current_url}")
+                if self.driver.is_element_present(".fa-user", wait=1):
+                    print(">>> Found user icon. Assuming success.")
+                    self.cookies = self.driver.get_cookies()
+                    self.is_logged_in = True
+                    return True
+
         return False
 
+    # ──────────────────────────────────────────
+    # Private helpers
+    # ──────────────────────────────────────────
+    def _get_credentials(self, retry=False):
+        if retry:
+            print("\n" + "!" * 40)
+            print("!!! PREVIOUS LOGIN FAILED. Please try again.")
+            print("!" * 40)
 
-# ──────────────────────────────────────────────
-# 3. LOGIN FLOW (receives driver, no decorator)
-# ──────────────────────────────────────────────
-def login(driver):
-    """
-    Attempts login up to 3 times.
-    Returns cookies on success, None on failure.
-    The driver is passed in from main.py — no new browser is opened.
-    """
-    email, password = get_credentials()
-    max_retries = 3
+        print("\n--- Secure Credentials Input ---")
+        email = input("Enter Email: ")
+        password = getpass.getpass("Enter Password: ")
+        return email, password
 
-    for attempt in range(max_retries):
-        print(f"\n" + "=" * 30)
-        print(f">>> LOGIN ATTEMPT {attempt + 1} / {max_retries}")
-        print("=" * 30)
+    def _submit_form(self, email, password):
+        print(">>> Filling login form...")
+        try:
+            if "customer_login" not in self.driver.current_url:
+                self.driver.get(self.LOGIN_URL)
 
-        perform_login_attempt(driver, email, password)
+            self.driver.type("input[name='email'], #email", email)
+            self.driver.type("input[name='password'], #password", password)
 
-        print(">>> Waiting for server response...")
-        time.sleep(4)
+            print(">>> Clicking Submit...")
+            self.driver.click("input[type='submit'], button[type='submit']", wait=2)
+        except Exception as e:
+            print(f">>> Interaction Error: {e}")
 
-        current_url = driver.current_url.rstrip("/")
+    def _check_result(self):
+        """Returns: 'success', 'failed', 'captcha', or 'unknown'."""
+        current_url = self.driver.current_url.rstrip("/")
         print(f">>> Current URL: {current_url}")
 
-        # --- Success ---
-        if current_url == "https://www.cardkingdom.com":
-            print("\n>>> SUCCESS: Login valid.")
-            return driver.get_cookies()
-
-        # --- Failed ---
+        if self._is_home():
+            return "success"
         elif "customer_login" in current_url:
-            print("\n>>> FAILURE: Credentials rejected.")
-            if attempt < max_retries - 1:
-                email, password = get_credentials(retry=True)
-            else:
-                print("!!! Max retries reached.")
-
-        # --- Captcha ---
+            return "failed"
         elif "challenge" in current_url or "attention" in current_url:
-            print("\n>>> CAPTCHA: Cloudflare detected.")
-            input(">>> Solve the CAPTCHA in the browser and press ENTER here...")
-            if driver.current_url.rstrip("/") == "https://www.cardkingdom.com":
-                return driver.get_cookies()
-
-        # --- Unknown ---
+            return "captcha"
         else:
-            print(f"\n>>> UNKNOWN: Landed on {current_url}")
-            if driver.is_element_present(".fa-user", wait=1):
-                print(">>> Found user icon. Assuming success.")
-                return driver.get_cookies()
+            return "unknown"
 
-    return None
+    def _is_home(self):
+        return self.driver.current_url.rstrip("/") == self.HOME_URL
