@@ -39,11 +39,6 @@ def run(driver: Driver, data=None):
     ).preview().extract_product_ids().add_all().summary()
 
     # ── Step 3: Future modules ──
-    # wishlist = WishlistManager(driver)
-    # wishlist.load_from_file("Wishlist").process()
-    #
-    # buylist = BuylistManager(driver)
-    # buylist.load_from_file("Buylist").process()
 
     print("\n" + "*" * 50)
     print(">>> ALL DONE")

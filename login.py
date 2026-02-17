@@ -21,9 +21,6 @@ class LoginManager:
         self.cookies = None
         self.is_logged_in = False
 
-    # ──────────────────────────────────────────
-    # Public API
-    # ──────────────────────────────────────────
     def login(self):
         """
         Main login flow. Prompts for credentials, retries on failure.

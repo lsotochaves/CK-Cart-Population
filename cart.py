@@ -4,9 +4,6 @@ import json
 import time
 
 
-# ──────────────────────────────────────────────
-# UTILITY: Pure function — no state needed
-# ──────────────────────────────────────────────
 def parse_card_list(directory="Cards_to_add"):
     """
     Reads the first .txt file found in the given directory.
@@ -82,9 +79,6 @@ class CartManager:
         self.success_count = 0
         self.fail_count = 0
 
-    # ──────────────────────────────────────────
-    # Public API
-    # ──────────────────────────────────────────
     def load_from_file(self, directory="Cards_to_add"):
         """Parse card list from a .txt file and store in self.cards."""
         self.cards = parse_card_list(directory)
