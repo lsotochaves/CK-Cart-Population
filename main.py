@@ -40,6 +40,7 @@ def run(driver: Driver, data=None):
 
     # ── Step 3: Future modules ──
 
+    cart.finish_execution()
     print("\n" + "*" * 50)
     print(">>> ALL DONE")
     print("*" * 50)

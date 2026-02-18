@@ -209,3 +209,11 @@ class CartManager:
         except Exception as e:
             print(f"      JS Error: {e}")
             return False
+
+    def finish_execution(self):
+        """
+        Redirects the browser to the cart page to verify contents.
+        """
+        cart_url = "https://www.cardkingdom.com/cart"
+        print(f"\n>>> Redirecting to cart summary: {cart_url}")
+        self.driver.get(cart_url)
