@@ -3,18 +3,11 @@ from login import LoginManager
 from cart import CartManager
 
 
-# ──────────────────────────────────────────────
-# SINGLE BROWSER SESSION — ALL STEPS RUN HERE
-# ──────────────────────────────────────────────
 @browser(
     block_images=False,
     window_size=None,
 )
 def run(driver: Driver, data=None):
-    """
-    Orchestrator — one browser session for everything.
-    Each module is a self-contained manager that receives the driver.
-    """
 
     # ── Step 1: Login ──
     print("=" * 50)
@@ -33,12 +26,9 @@ def run(driver: Driver, data=None):
     print(">>> STEP 2: CART")
     print("=" * 50)
 
-    cart = CartManager(driver)
-    cart.load_from_file(
-        "Cards_to_add"
-    ).preview().extract_product_ids().add_all().summary()
-
-    # ── Step 3: Future modules ──
+    cookies = {c['name']: c['value'] for c in auth.cookies}
+    cart = CartManager(cookies)
+    cart.load_from_file("Cards_to_add").preview().extract_product_ids().add_all().summary()
 
     cart.finish_execution()
     print("\n" + "*" * 50)
@@ -48,8 +38,5 @@ def run(driver: Driver, data=None):
     input("\n>>> Press ENTER to close the browser...")
 
 
-# ──────────────────────────────────────────────
-# ENTRY POINT
-# ──────────────────────────────────────────────
 if __name__ == "__main__":
     run()

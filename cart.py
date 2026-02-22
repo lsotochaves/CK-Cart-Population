@@ -69,11 +69,18 @@ class CartManager:
         cart.summary()
     """
 
-    API_URL = "https://www.cardkingdom.com/api/cart/add"
     PRODUCT_ID_SELECTOR = 'form.addToCartForm input[name="product_id[0]"]'
 
-    def __init__(self, driver, delay=1):
-        self.driver = driver
+    API_URL = "https://www.cardkingdom.com/api/cart/add"
+
+    def __init__(self, cookies, delay=1):
+        self.session = requests.Session()
+        self.session.cookies.update(cookies)
+        self.session.headers.update({
+            "accept": "application/json;charset=UTF-8",
+            "content-type": "application/json;charset=UTF-8",
+            "x-requested-with": "XMLHttpRequest",
+        })
         self.delay = delay
         self.cards = []
         self.success_count = 0
@@ -162,52 +169,26 @@ class CartManager:
     # Private helpers
     # ──────────────────────────────────────────
     def _extract_single_id(self, url):
-        """Navigate to a card page and pull the product_id from the form."""
-        print(f">>> Loading: {url}")
-        self.driver.get(url)
-
-        if self.driver.is_element_present(self.PRODUCT_ID_SELECTOR, wait=10):
-            product_id = self.driver.run_js(
-                f"return document.querySelector('{self.PRODUCT_ID_SELECTOR}').value"
-            )
-            print(f"   Product ID: {product_id}")
-            return product_id
-        else:
-            print("    Product ID not found!!")
+        resp = self.session.get(url)
+        if resp.status_code != 200:
+            print(f"    Failed to load page (HTTP {resp.status_code})")
             return None
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        el = soup.select_one('form.addToCartForm input[name="product_id[0]"]')
+        return el['value'] if el else None
 
     def _add_single(self, card):
-        """Add one card to cart via synchronous XHR in the browser."""
         payload = {
             "product_id": card["product_id"],
             "style": card["quality"],
             "quantity": card["quantity"],
         }
-
-        js_code = """
-        var xhr = new XMLHttpRequest();
-        xhr.open("POST", "%s", false);
-        xhr.setRequestHeader("accept", "application/json;charset=UTF-8");
-        xhr.setRequestHeader("content-type", "application/json;charset=UTF-8");
-        xhr.setRequestHeader("x-requested-with", "XMLHttpRequest");
-        xhr.send(JSON.stringify(%s));
-        return JSON.stringify({status: xhr.status, body: xhr.responseText});
-        """ % (self.API_URL, json.dumps(payload))
-
-        try:
-            result_raw = self.driver.run_js(js_code)
-            result = json.loads(result_raw)
-            status = result.get("status")
-            body = result.get("body", "")
-
-            if status == 200:
-                print(f"   Added successfully! (HTTP {status})")
-                return True
-            else:
-                print(f"   Failed (HTTP {status}): {body[:200]}")
-                return False
-        except Exception as e:
-            print(f"      JS Error: {e}")
+        resp = self.session.post(self.API_URL, json=payload)
+        if resp.status_code == 200:
+            print(f"    Added! (HTTP {resp.status_code})")
+            return True
+        else:
+            print(f"    Failed (HTTP {resp.status_code}): {resp.text[:200]}")
             return False
 
     def finish_execution(self):
