@@ -2,6 +2,8 @@ import os
 import glob
 import json
 import time
+import requests 
+from bs4 import BeautifulSoup
 
 
 def parse_card_list(directory="Cards_to_add"):
