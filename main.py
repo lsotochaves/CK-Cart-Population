@@ -1,6 +1,17 @@
+import getpass
 from botasaurus.browser import browser, Driver
 from login import LoginManager
 from cart import CartManager
+
+
+CART_URL = "https://www.cardkingdom.com/cart"
+
+
+def get_credentials():
+    """Prompt the user for email and password."""
+    email = input("Email: ")
+    password = getpass.getpass("Password: ")
+    return email, password
 
 
 @browser(
@@ -8,34 +19,30 @@ from cart import CartManager
     window_size=None,
 )
 def run(driver: Driver, data=None):
+    """
+    Orchestrator — one browser session for everything.
+    Each module is a self-contained manager that receives the driver.
+    """
 
-    # ── Step 1: Login ──
-    print("=" * 50)
-    print(">>> STEP 1: LOGIN")
-    print("=" * 50)
-
+    # Step 1: Login
+    email, password = get_credentials()
     auth = LoginManager(driver)
-    if not auth.login():
-        print("\n!!! Login failed. Exiting.")
+    if not auth.login(email, password):
+        print("Login failed. Exiting.")
         return
 
-    print(f">>> Session captured with {len(auth.cookies)} cookies.\n")
+    print(f"Session captured with {len(auth.cookies)} cookies.")
 
-    # ── Step 2: Cart ──
-    print("=" * 50)
-    print(">>> STEP 2: CART")
-    print("=" * 50)
+    # Step 2: Cart
+    cart = CartManager(driver)
+    cart.load_from_file("Cards_to_add").preview().extract_product_ids()
+    results = cart.add_all()
 
-    cookies = {c['name']: c['value'] for c in auth.cookies}
-    cart = CartManager(cookies)
-    cart.load_from_file("Cards_to_add").preview().extract_product_ids().add_all().summary()
+    # Step 3: Finish
+    driver.get(CART_URL)
+    print("Done.")
 
-    cart.finish_execution()
-    print("\n" + "*" * 50)
-    print(">>> ALL DONE")
-    print("*" * 50)
-
-    input("\n>>> Press ENTER to close the browser...")
+    input("Press ENTER to close the browser...")
 
 
 if __name__ == "__main__":

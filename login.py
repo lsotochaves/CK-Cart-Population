@@ -1,4 +1,3 @@
-import getpass
 import time
 
 
@@ -8,7 +7,7 @@ class LoginManager:
 
     Usage:
         login_mgr = LoginManager(driver)
-        if login_mgr.login():
+        if login_mgr.login(email, password):
             cookies = login_mgr.cookies
     """
 
@@ -21,22 +20,18 @@ class LoginManager:
         self.cookies = None
         self.is_logged_in = False
 
-    def login(self):
+    def login(self, email, password):
         """
-        Main login flow. Prompts for credentials, retries on failure.
+        Main login flow. Receives credentials externally, retries on failure.
         Returns True on success, False on failure.
         Cookies are stored in self.cookies.
         """
-        email, password = self._get_credentials()
-
         for attempt in range(self.max_retries):
-            print(f"\n" + "=" * 30)
-            print(f">>> LOGIN ATTEMPT {attempt + 1} / {self.max_retries}")
-            print("=" * 30)
+            print(f"Login attempt {attempt + 1}/{self.max_retries}")
 
             self._submit_form(email, password)
 
-            print(">>> Waiting for server response...")
+            print("Waiting for server response...")
             time.sleep(4)
 
             result = self._check_result()
@@ -44,19 +39,17 @@ class LoginManager:
             if result == "success":
                 self.cookies = self.driver.get_cookies()
                 self.is_logged_in = True
-                print("\n>>> SUCCESS: Login valid.")
+                print("Login successful.")
                 return True
 
             elif result == "failed":
-                print("\n>>> FAILURE: Credentials rejected.")
-                if attempt < self.max_retries - 1:
-                    email, password = self._get_credentials(retry=True)
-                else:
-                    print("!!! Max retries reached.")
+                print("Credentials rejected.")
+                if attempt >= self.max_retries - 1:
+                    print("Max retries reached.")
 
             elif result == "captcha":
-                print("\n>>> CAPTCHA: Cloudflare detected.")
-                input(">>> Solve the CAPTCHA in the browser and press ENTER here...")
+                print("Cloudflare CAPTCHA detected.")
+                input("Solve the CAPTCHA in the browser and press ENTER here...")
                 if self._is_home():
                     self.cookies = self.driver.get_cookies()
                     self.is_logged_in = True
@@ -64,47 +57,29 @@ class LoginManager:
 
             elif result == "unknown":
                 current_url = self.driver.current_url.rstrip("/")
-                print(f"\n>>> UNKNOWN: Landed on {current_url}")
+                print(f"Unexpected URL: {current_url}")
                 if self.driver.is_element_present(".fa-user", wait=1):
-                    print(">>> Found user icon. Assuming success.")
+                    print("Found user icon — assuming success.")
                     self.cookies = self.driver.get_cookies()
                     self.is_logged_in = True
                     return True
 
         return False
 
-    # ──────────────────────────────────────────
-    # Private helpers
-    # ──────────────────────────────────────────
-    def _get_credentials(self, retry=False):
-        if retry:
-            print("\n" + "!" * 40)
-            print("!!! PREVIOUS LOGIN FAILED. Please try again.")
-            print("!" * 40)
-
-        print("\n--- Secure Credentials Input ---")
-        email = input("Enter Email: ")
-        password = getpass.getpass("Enter Password: ")
-        return email, password
-
     def _submit_form(self, email, password):
-        print(">>> Filling login form...")
         try:
             if "customer_login" not in self.driver.current_url:
                 self.driver.get(self.LOGIN_URL)
 
             self.driver.type("input[name='email'], #email", email)
             self.driver.type("input[name='password'], #password", password)
-
-            print(">>> Clicking Submit...")
             self.driver.click("input[type='submit'], button[type='submit']", wait=2)
         except Exception as e:
-            print(f">>> Interaction Error: {e}")
+            print(f"Interaction error: {e}")
 
     def _check_result(self):
         """Returns: 'success', 'failed', 'captcha', or 'unknown'."""
         current_url = self.driver.current_url.rstrip("/")
-        print(f">>> Current URL: {current_url}")
 
         if self._is_home():
             return "success"
