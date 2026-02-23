@@ -2,6 +2,7 @@ import os
 import glob
 import json
 import time
+import requests
 from dotenv import load_dotenv
 
 
@@ -23,6 +24,8 @@ class CartManager:
     PRODUCT_ID_SELECTOR = 'form.addToCartForm input[name="product_id[0]"]'
 
     def __init__(self, driver, delay=1):
+        load_dotenv()
+        self.API_SERVER = os.getenv("API_SERVER")
         self.driver = driver
         self.delay = delay
         self.cards = []
@@ -93,14 +96,18 @@ class CartManager:
         return self
 
     def obtain_product_ids(self):
-        urls = [card["url"] for card in self.cards]
+        urls = [
+            card["url"].replace("https://www.cardkingdom.com/", "")
+            for card in self.cards
+        ]
         response = requests.post(f"{self.API_SERVER}/url_cards", json=urls)
         id_map = response.json()
 
         for card in self.cards:
-            card["product_id"] = id_map.get(card["url"])
+            stripped = card["url"].replace("https://www.cardkingdom.com/", "")
+            card["product_id"] = id_map.get(stripped)
             if not card["product_id"]:
-                print("Failed to fetch one card id from the list")
+                print(f"Failed to fetch {card['url']} id from the list")
             else:
                 print("id added")
 

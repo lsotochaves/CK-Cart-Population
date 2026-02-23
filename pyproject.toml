@@ -6,5 +6,6 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "botasaurus>=4.0.97",
+    "python-dotenv>=1.2.1",
     "requests>=2.32.5",
 ]
