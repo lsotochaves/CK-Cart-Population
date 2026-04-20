@@ -24,7 +24,13 @@ def run(driver: Driver, data=None):
     Each module is a self-contained manager that receives the driver.
     """
 
-    # Step 1: Login
+    # Step 1: Fetch cards ids.
+    cart = CartManager(driver)
+    cart.load_from_file(
+        "Cards_to_add"
+    ).preview().obtain_product_ids()  # CARDS TO ADD IS DEFAULT DIRECTORY MUST CHANGE LATER
+
+    # Step 2: Login
     email, password = get_credentials()
     auth = LoginManager(driver)
     if not auth.login(email, password):
@@ -33,10 +39,8 @@ def run(driver: Driver, data=None):
 
     print(f"Session captured with {len(auth.cookies)} cookies.")
 
-    # Step 2: Cart
-    cart = CartManager(driver)
-    cart.load_from_file("Cards_to_add").preview().extract_product_ids()
-    results = cart.add_all()
+    # Step 3: Add cards
+    cart.add_all()
 
     # Step 3: Finish
     driver.get(CART_URL)

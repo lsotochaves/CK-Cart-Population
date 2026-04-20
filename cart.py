@@ -23,7 +23,7 @@ class CartManager:
     API_URL = "https://www.cardkingdom.com/api/cart/add"
     PRODUCT_ID_SELECTOR = 'form.addToCartForm input[name="product_id[0]"]'
 
-    def __init__(self, driver, delay=1):
+    def __init__(self, driver, delay=0.2):
         load_dotenv()
         self.API_SERVER = os.getenv("API_SERVER")
         self.driver = driver

@@ -31,6 +31,7 @@ class LoginManager:
 
             self._submit_form(email, password)
 
+            # Give the server time to process and redirect
             print("Waiting for server response...")
             time.sleep(4)
 
@@ -48,6 +49,7 @@ class LoginManager:
                     print("Max retries reached.")
 
             elif result == "captcha":
+                # Pause and let the user solve it manually in the browser
                 print("Cloudflare CAPTCHA detected.")
                 input("Solve the CAPTCHA in the browser and press ENTER here...")
                 if self._is_home():
@@ -56,6 +58,7 @@ class LoginManager:
                     return True
 
             elif result == "unknown":
+                # Landed somewhere unexpected — check for the user icon as a fallback
                 current_url = self.driver.current_url.rstrip("/")
                 print(f"Unexpected URL: {current_url}")
                 if self.driver.is_element_present(".fa-user", wait=1):
@@ -67,6 +70,7 @@ class LoginManager:
         return False
 
     def _submit_form(self, email, password):
+        """Navigate to the login page (if needed), fill in credentials, and submit."""
         try:
             if "customer_login" not in self.driver.current_url:
                 self.driver.get(self.LOGIN_URL)
@@ -78,7 +82,7 @@ class LoginManager:
             print(f"Interaction error: {e}")
 
     def _check_result(self):
-        """Returns: 'success', 'failed', 'captcha', or 'unknown'."""
+        """Determine login outcome based on the URL we landed on."""
         current_url = self.driver.current_url.rstrip("/")
 
         if self._is_home():
@@ -91,4 +95,5 @@ class LoginManager:
             return "unknown"
 
     def _is_home(self):
+        """Check if the browser is on the Card Kingdom homepage (i.e. logged in)."""
         return self.driver.current_url.rstrip("/") == self.HOME_URL
